@@ -33,7 +33,7 @@ fn collect_zips(dir: &Path, zips: &mut Vec<PathBuf>) -> io::Result<()> {
         let path = entry.path();
         if path.is_dir() {
             collect_zips(&path, zips)?;
-        } else if path.extension().map_or(false, |e| e.eq_ignore_ascii_case("zip")) {
+        } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("zip")) {
             zips.push(path);
         }
     }
@@ -123,24 +123,23 @@ fn analyze(source_dir: &Path) -> io::Result<Vec<PathBuf>> {
     println!(" Total size:        {:.2} GB", total_size as f64 / (1024.0 * 1024.0 * 1024.0));
 
     // Show sample from first ZIP
-    if let Some(first) = zips.first() {
-        if let Ok(file) = fs::File::open(first) {
-            if let Ok(mut archive) = zip::ZipArchive::new(file) {
-                let mut extensions: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-                for i in 0..archive.len() {
-                    if let Ok(entry) = archive.by_index(i) {
-                        if let Some(ext) = Path::new(entry.name()).extension() {
-                            *extensions.entry(ext.to_string_lossy().to_lowercase()).or_insert(0) += 1;
-                        }
-                    }
-                }
-                println!("\n Sample from: {}", first.file_name().unwrap_or_default().to_string_lossy());
-                let mut sorted: Vec<_> = extensions.into_iter().collect();
-                sorted.sort_by(|a, b| b.1.cmp(&a.1));
-                for (ext, count) in sorted.iter().take(10) {
-                    println!("   .{:<11} -> {} files", ext, count);
-                }
+    if let Some(first) = zips.first()
+        && let Ok(file) = fs::File::open(first)
+        && let Ok(mut archive) = zip::ZipArchive::new(file)
+    {
+        let mut extensions: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for i in 0..archive.len() {
+            if let Ok(entry) = archive.by_index(i)
+                && let Some(ext) = Path::new(entry.name()).extension()
+            {
+                *extensions.entry(ext.to_string_lossy().to_lowercase()).or_insert(0) += 1;
             }
+        }
+        println!("\n Sample from: {}", first.file_name().unwrap_or_default().to_string_lossy());
+        let mut sorted: Vec<_> = extensions.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        for (ext, count) in sorted.iter().take(10) {
+            println!("   .{:<11} -> {} files", ext, count);
         }
     }
     println!("{}\n", "=".repeat(60));
@@ -182,11 +181,11 @@ fn extract(source_dir: &Path, dest_dir: &Path) -> io::Result<()> {
                                 let clean = strip_drive_letter(&raw_name);
                                 let target = dest_dir.join(clean);
 
-                                if let Some(parent) = target.parent() {
-                                    if let Err(e) = fs::create_dir_all(parent) {
-                                        errors.push(format!("{}: mkdir {}: {}", zip_name, parent.display(), e));
-                                        continue;
-                                    }
+                                if let Some(parent) = target.parent()
+                                    && let Err(e) = fs::create_dir_all(parent)
+                                {
+                                    errors.push(format!("{}: mkdir {}: {}", zip_name, parent.display(), e));
+                                    continue;
                                 }
 
                                 match fs::File::create(&target) {
